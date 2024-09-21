@@ -1,0 +1,26 @@
+# -----------------------------------------------------------------------------
+# BUILD SYSTEM
+# -----------------------------------------------------------------------------
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools >=64.0.0",
+    "wheel >=0.40.0",
+]
+
+
+# -----------------------------------------------------------------------------
+# PROJECT
+# -----------------------------------------------------------------------------
+
+[project]
+name = "blocks"
+version = "0.1"
+description = "AI for the board game Blocks."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pyqt6",
+]
