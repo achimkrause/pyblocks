@@ -18,6 +18,10 @@ class AIPlayer(QThread):
         self.position = position
         self.start()
 
+    def save_experience(self,game_name,value):
+        if(hasattr(self.ai, "save_experience")):
+            self.ai.save_experience(game_name,value)
+
 
 
 
