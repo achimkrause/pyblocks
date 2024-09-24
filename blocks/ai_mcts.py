@@ -1,13 +1,25 @@
 from mcts import MCTSTree,VPFunction
 from learning import NN_VPFunction
+from ai import AITemplate, AI
 
 import numpy as np
 import random as rnd
+import string
 from PyQt6.QtCore import pyqtSignal, QObject
 
 from pathlib import Path
 
-class AI_MCTS(QObject):
+class AIMCTSTemplate(AITemplate):
+    def __init__(self, path=None, training=False,initialize=False):
+        super().__init__()
+        self.path = path
+        self.training = training
+        self.initialize = initialize
+    def new(self):
+        return AIMCTS(self.path,self.training,self.initialize)
+
+
+class AIMCTS(AI):
     additional_info_signal = pyqtSignal(object)
 
     def __init__(self,path=None,training=False,initialize=False):
@@ -24,7 +36,7 @@ class AI_MCTS(QObject):
         if(training):
             self.temperature=1.0
         else:
-            self.temperature=0.0
+            self.temperature=0.2
         self.exp_list_player0 = []
         self.exp_list_player1 = []
         self.exp_list_target_policy = []
@@ -56,19 +68,21 @@ class AI_MCTS(QObject):
         self.exp_list_player0.append(experience.player0_pieces)
         self.exp_list_player1.append(experience.player1_pieces)
         self.exp_list_target_policy.append(experience.posterior_policy)
-    def save_experience(self,game_name,value):
+    def train(self, game_name, value):
         if not self.training:
             return
         if self.path == None:
             print("Training without path doesn't work")
             return
         n = len(self.exp_list_player0)
-        game_experience={}
-        game_experience["player0"] = np.array(self.exp_list_player0)
-        game_experience["player1"] = np.array(self.exp_list_player1)
-        game_experience["target_policy"] = np.array(self.exp_list_target_policy)
-        game_experience["target_value"] = np.full((n,1),value)
-        np.save(self.path / 'games' / (game_name + '.exp'),game_experience)
+        player0 = np.array(self.exp_list_player0)
+        player1 = np.array(self.exp_list_player1)
+        target_policy = np.array(self.exp_list_target_policy)
+        target_value = np.full((n,1),value)
+        suffix=''.join(rnd.choices(string.ascii_uppercase + string.digits, k=6))
+        savepath = self.path / 'games' / (game_name + '_' + suffix)
+        print("saving {}".format(savepath))
+        np.savez(savepath,player0=player0, player1=player1, target_policy=target_policy, target_value=target_value)
 
 
 

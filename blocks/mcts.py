@@ -23,15 +23,10 @@ def playout(position):
                     if val<0:
                         pos.move(i,k)
                         active_player = 1-active_player
-    #result 0 means draw
-    if(pos.result == 0):
-        return 0.0
-    #result 1 means the player who last moved won. This is the opposite of active player since we swapped.
-    if(pos.result == 1 and active_player==1):
-        return 1.0
-    if(pos.result == 1 and active_player==0):
-        return -1.0
-
+    if(active_player == 0):
+        return pos.result
+    else:
+        return 1.0 - pos.result
 
 #default value and policy function, single random full playout
 class VPFunction:
@@ -89,7 +84,7 @@ class MCTSTree:
 
                 u = c * self.prior_policy[i][k] * np.sqrt(self.visit_count - 1)/(1.0+child_n)
                 if (i,k) in self.children:
-                    qplusu = u - self.children.get((i,k)).action_value()
+                    qplusu = u + (1.0 - self.children.get((i,k)).action_value())
                 else:
                     qplusu = u
                 if child_qplusu==None or qplusu > child_qplusu:
@@ -99,19 +94,19 @@ class MCTSTree:
         return (child_i,child_k) #to exclude the None,None case, we need to ensure that we call this only if the position is not decided
     def visit_child(self):
         if(self.position.over):
-            v=playout(self.position) #this is just the result in that case
+            v=self.position.result
             self.value += v
             self.visit_count += 1
             return v
             
         i,k = self.select_child()
         if (i,k) in self.children:
-            v = -self.children[(i,k)].visit_child()
+            v = 1.0-self.children[(i,k)].visit_child()
         else:
             pos = self.position.copy()
             pos.move(i,k)
             self.children[(i,k)] = MCTSTree(self.vp_function,pos)
-            v = -self.children[(i,k)].value
+            v = 1.0-self.children[(i,k)].value
         self.value += v
         self.visit_count += 1
         return v

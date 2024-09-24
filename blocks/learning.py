@@ -3,7 +3,11 @@ from mcts import VPFunction
 import torch
 import torch.nn as nn
 
+import numpy as np
+
 from pathlib import Path
+
+import os
 
 class PolicyNet(nn.Module):
         # Run superclass constructor to get all the  `nn.Module` magic
@@ -12,6 +16,14 @@ class PolicyNet(nn.Module):
         # Define some layers; this can get more complicated later
         self.layers = nn.Sequential(
             nn.Linear(2 * 11 * 17, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 256),
+            nn.LeakyReLU(),
+            nn.Linear(256, 256),
             nn.LeakyReLU(),
             nn.Linear(256, 256),
             nn.LeakyReLU(),
@@ -50,33 +62,98 @@ class PolicyNet(nn.Module):
             value = foo[:, 0]  # shape: (batch_dimension, 1)
             policy = foo[:, 1:]  # shape: (batch_dimension, 11 * 17)
     
-            # Reshape policy back to 2D
-            policy = policy.reshape(-1, 11, 17)
-    
             # Normalize
-            value = 2 * (torch.sigmoid(value) - 0.5)  # in [-1, 1]
-            policy = torch.sigmoid(policy)  # in [0, 1]
-            return value, policy
+            value = torch.sigmoid(value)  # in [0, 1]
+            logpolicy = nn.LogSigmoid()(policy)  # in (-infty, 0]
+            logpolicysum = torch.logsumexp(policy,1).reshape(-1,1).expand(-1,11*17)
+            logpolicy = logpolicy - logpolicysum
+
+            # Reshape outputs
+            value = value.reshape(-1, 1)
+            logpolicy = logpolicy.reshape(-1, 11, 17)
+            return value, logpolicy
     def save(self,path):
         torch.save(self.state_dict(), path)
     def load(self,path):
         self.load_state_dict(torch.load(path))
-    def train(self,path_to_games_dir):
-        path = Path(path_to_games_dir)
+
+class Training:
+    def __init__(self,path,new_path, overwrite=False):
+        self.policy_net = PolicyNet(path / 'model.weights')
+        self.path_to_games = path / 'games'
+        self.new_path = new_path
+        if not overwrite and new_path.exists():
+            raise ValueError("{} exists already!".format(new_path))
+
+    def run(self):
         x_as_list=[]
         y_as_list=[]
         v_as_list=[]
         p_as_list=[]
-        for file_path in path.glob("*.exp"):
+        for file_path in self.path_to_games.glob("*.npz"):
             game_experience=np.load(file_path)
-            x_as_list.append(game["player0"])
-            y_as_list.append(game["player1"])
-            v_as_list.append(game["target_value"])
-            p_as_list.append(game["target_policy"])
+            x_as_list.append(game_experience["player0"])
+            y_as_list.append(game_experience["player1"])
+            v_as_list.append(game_experience["target_value"])
+            p_as_list.append(game_experience["target_policy"])
         x_as_np = np.concatenate(x_as_list, axis=0)
         y_as_np = np.concatenate(y_as_list, axis=0)
         v_as_np = np.concatenate(v_as_list, axis=0)
         p_as_np = np.concatenate(p_as_list, axis=0)
+        # Convert the game data to tensors (for PyTorch)
+        dataset = torch.utils.data.TensorDataset(
+            torch.from_numpy(x_as_np).float(),
+            torch.from_numpy(y_as_np).float(),
+            torch.from_numpy(v_as_np).float(),
+            torch.from_numpy(p_as_np).float(),
+        )
+        # Construct a dataloader to loop over them in batches
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=42,  # define batch size
+            shuffle=True,
+            num_workers=2,
+        )
+        print("Loaded dataset, {} entries".format(x_as_np.shape[0]))
+
+        # Pick an optimizer and learning rate of your liking
+        optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=3e-4)
+        
+        # Train for a given number of epochs
+        for epoch in range(50):
+            print("Training epoch {}".format(epoch))
+            # Make sure your model is in training mode
+            self.policy_net.train()
+            # Loop over your dataset
+            for x,y,target_v,target_p in dataloader:
+                # Reset gradients
+                optimizer.zero_grad()
+                # Forward pass
+                v,lp = self.policy_net(x,y)
+                # Compute loss and gradients
+                # The MSE loss is probably not a great choice here...
+                loss = (
+                        (v - target_v) ** 2 -  # MSE of values
+                        (lp * target_p).sum((1, 2))  # CE of policies
+                    ).mean()  # mean over the batche
+                print(loss)
+                loss.backward()
+                # Take a step with the optimizer
+                optimizer.step()
+            # Optional: Perform a validation step to check
+            # against overfitting
+            #self.policy_net.eval()
+            #do_validation()
+
+        print("Creating {}".format(self.new_path))
+
+        if not self.new_path.exists():
+            self.new_path.mkdir()
+        if not (self.new_path/'games').exists():
+            (self.new_path/'games').mkdir()
+
+        print("Saving new model")
+        self.policy_net.save(self.new_path/'model.weights')
 
 
 class NN_VPFunction(VPFunction):
@@ -89,15 +166,16 @@ class NN_VPFunction(VPFunction):
         pieces1 = position.pieces[1]
         x = torch.from_numpy(pieces0).float()
         y = torch.from_numpy(pieces1).float()
-        value,policy = self.policy_net(x,y)
+        value,logpolicy = self.policy_net(x,y)
         #mask and normalize
-        policy = policy[0].detach().numpy() * position.valid_moves
+        logpolicy = logpolicy[0].detach().numpy()
+        policy = np.exp(logpolicy) * position.valid_moves
         policy = policy / policy.sum() 
+        value = value[0].detach().numpy()
         return (value[0],policy)
 
         #target = torch.randn(11, 17)
         #loss = nn.functional.mse_loss(policy, target)
         #loss.backward()
         #print(next(policy_net.parameters()).grad)
-
 

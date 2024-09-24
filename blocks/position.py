@@ -8,6 +8,7 @@ class Position:
         self.empty = True
         self.over = False
         self.result = None
+        self.flipped = False
         self.pieces = [np.zeros(shape=(11,17),dtype=np.int8), np.zeros(shape=(11,17),dtype=np.int8)]
         self.valid_moves = np.zeros(shape=(11,17),dtype=np.int8)
         self.occupied_mask = [np.zeros(shape=(11,9),dtype=np.int8), np.zeros(shape=(11,9),dtype=np.int8)]
@@ -158,6 +159,7 @@ class Position:
         return True
 
     def _swap(self):
+        self.flipped = not self.flipped
         ps=self.pieces[0]
         self.pieces[0]=self.pieces[1]
         self.pieces[1]=ps
@@ -184,8 +186,17 @@ class Position:
                     no_moves_left=False
         if no_moves_left:
             self.over=True
-            self.result=0
-            return
+            count_stones=0
+            for i in range(11):
+                for j in range(9):
+                    if self.occupied_mask[0][i][j]:
+                        count_stones += 1
+            if(count_stones < 40):
+                self.result=0.0
+                return
+            else:
+                self.result=0.5
+                return
 
         #horizontal
         for i in range(11-4):
@@ -201,7 +212,7 @@ class Position:
                     won &= self.occupied_mask[player][i+d][j]
                 if won:
                     self.over=True
-                    self.result=1
+                    self.result=0.0
                     return
         #vertical
         for i in range(11):
@@ -217,7 +228,7 @@ class Position:
                     won &= self.occupied_mask[player][i][j+d]
                 if won:
                     self.over=True
-                    self.result=1
+                    self.result=0.0
                     return
         #diagonal
         for i in range(11-4):
@@ -233,7 +244,7 @@ class Position:
                     won &= self.occupied_mask[player][i+d][j+d]
                 if won:
                     self.over=True
-                    self.result=1
+                    self.result=0.0
                     return
         #codiagonal
         for i in range(11-4):
@@ -249,7 +260,7 @@ class Position:
                     won &= self.occupied_mask[player][i+d][j-d]
                 if won:
                     self.over=True
-                    self.result=1
+                    self.result=0.0
                     return
 
 

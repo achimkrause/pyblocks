@@ -1,8 +1,16 @@
 import random as rnd
 
-class AIRandom:
+from ai import AI, AITemplate
+
+class AIRandomTemplate(AITemplate):
     def __init__(self):
-        pass
+        super().__init__()
+    def new(self):
+        return AIRandom()
+
+class AIRandom(AI):
+    def __init__(self):
+        super().__init__()
     def find_move(self,position):
         count=0
         for i in range(11):
@@ -16,7 +24,3 @@ class AIRandom:
                     val-=1
                     if val<0:
                         return (i,k)
-
-        
-
-
