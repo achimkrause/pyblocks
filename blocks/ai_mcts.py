@@ -10,19 +10,20 @@ from PyQt6.QtCore import pyqtSignal, QObject
 from pathlib import Path
 
 class AIMCTSTemplate(AITemplate):
-    def __init__(self, path=None, training=False,initialize=False):
+    def __init__(self, mcts_steps, path=None, training=False,initialize=False):
         super().__init__()
         self.path = path
         self.training = training
         self.initialize = initialize
+        self.mcts_steps = mcts_steps
     def new(self):
-        return AIMCTS(self.path,self.training,self.initialize)
+        return AIMCTS(self.mcts_steps,self.path,self.training,self.initialize)
 
 
 class AIMCTS(AI):
     additional_info_signal = pyqtSignal(object)
 
-    def __init__(self,path=None,training=False,initialize=False):
+    def __init__(self,mcts_steps,path=None,training=False,initialize=False):
         super().__init__()
         if(path==None):
             self.path=None
@@ -36,7 +37,8 @@ class AIMCTS(AI):
         if(training):
             self.temperature=1.0
         else:
-            self.temperature=0.2
+            self.temperature=1.0
+        self.mcts_steps=mcts_steps
         self.exp_list_player0 = []
         self.exp_list_player1 = []
         self.exp_list_target_policy = []
@@ -44,9 +46,9 @@ class AIMCTS(AI):
         self.path.mkdir()
         (self.path/'games').mkdir()
     def find_move(self,position):
-        tree = MCTSTree(self.vp_function, position)
+        tree = MCTSTree(self.vp_function, position, root=True)
         self.additional_info_signal.emit(tree)
-        for n in range(500):
+        for n in range(self.mcts_steps):
             tree.visit_child()
             self.additional_info_signal.emit(tree)
         policy=tree.compute_posterior_policy(self.temperature)
@@ -58,6 +60,9 @@ class AIMCTS(AI):
             for k in range(17):
                 t -= policy[i][k]
                 if t<0:
+                    child = tree.children[(i,k)]
+                    #print(f"moved ({i},{k})")
+                    #child.debug()
                     return (i,k)
         #we only land here if t was almost exactly 1, in that case take first possible move.
         for i in range(11):

@@ -20,12 +20,16 @@ from player import HumanPlayerTemplate
 
 import argparse
 
-dotColor = QColor(200,200,200)
+movesColor = QColor(200,200,200)
 playerColor = [QColor(75,75,75),QColor(227,225,161)]
 textColor = QColor(0,0,255)
 
 radius=5
 click_radius=10
+
+bar_width_proportion  = 0.6 #percentage of screen width
+bar_height_proportion = 0.2 #percentage of grid size
+bar_margin_proportion = 0.4 #percentage of grid size
 
 
 class BoardGameArea(QWidget):
@@ -45,6 +49,7 @@ class BoardGameArea(QWidget):
             self.active_player = 0
         self.clear_additional_info()
     def paintEvent(self, event):
+        self.update_dimensions()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.draw_pieces(painter)
@@ -74,15 +79,38 @@ class BoardGameArea(QWidget):
                     count = self.additional_info.children[(i,k)].visit_count
                     val = 1.0-(self.additional_info.children[(i,k)].value/count)
                     self.draw_info(i,k,"{},{:.2f}".format(count,val),painter)
-    def grid_size(self):
-        gridX=self.width() // 11
-        gridY=self.height() // 9
-        grid_size = min(gridX,gridY)
-        return grid_size
+        prior_value = self.additional_info.prior_value
+        value = self.additional_info.action_value()
+        self.draw_bars(prior_value,value,painter)
+    def draw_bars(self,prior_value, value,painter):
+        grid_size = self.grid_size
+        bar_width = int(bar_width_proportion * self.width())
+        bar_height = int(bar_height_proportion * grid_size)
+        bar_margin = int(bar_margin_proportion * grid_size)
+        posX = int((1-bar_width_proportion)/2*self.width())
+        posY = self.game_area_originY + bar_margin
+        cutX_value = int(value*bar_width)
+        cutX_prior_value = int(prior_value*bar_width)
+
+        painter.setBrush(playerColor[self.active_player])
+        painter.setPen(QColor(0,0,0,0))
+        painter.drawRect(posX, posY, cutX_value, bar_height)
+        painter.drawRect(posX, posY+bar_height, cutX_prior_value, bar_height)
+        painter.setBrush(playerColor[1-self.active_player])
+        painter.drawRect(posX+cutX_value, posY, bar_width-cutX_value, bar_height)
+        painter.drawRect(posX+cutX_prior_value, posY+bar_height, bar_width-cutX_prior_value, bar_height)
+    def update_dimensions(self):
+        grid_width = 11
+        grid_height = 9 + bar_margin_proportion + 2*bar_height_proportion
+        gridX=int(self.width() / grid_width)
+        gridY=int(self.height() / grid_height)
+        self.grid_size = min(gridX,gridY)
+        self.game_area_originX = int((self.width() - grid_width * self.grid_size) / 2)
+        self.game_area_originY = int((self.height() + grid_height * self.grid_size) / 2 - (bar_margin_proportion + 2*bar_height_proportion)*self.grid_size)
     def draw_valid_move(self,i,k,painter):
-        grid_size=self.grid_size()
-        offX=(self.width()-11*grid_size)//2
-        offY=(self.height()+9*grid_size)//2
+        grid_size=self.grid_size
+        offX=self.game_area_originX
+        offY=self.game_area_originY
         j = k//2
         horizontal = (k%2==0)
         if(horizontal):
@@ -91,16 +119,16 @@ class BoardGameArea(QWidget):
         else:
             posX=offX + int((0.5+i)*grid_size)
             posY=offY - (1+j)*grid_size
-        painter.setBrush(dotColor)
+        painter.setBrush(movesColor)
         painter.setPen(QColor(0,0,0,0))
         if horizontal:
             painter.drawRect(posX-2*radius, posY-radius, 4*radius, 2*radius)
         else:
             painter.drawRect(posX-radius, posY-2*radius, 2*radius, 4*radius)
     def draw_piece(self,i,k,c,painter):
-        grid_size=self.grid_size()
-        offX=(self.width()-11*grid_size)//2
-        offY=(self.height()+9*grid_size)//2
+        grid_size=self.grid_size
+        offX=self.game_area_originX
+        offY=self.game_area_originY
         j = k//2
         painter.setBrush(c)
         horizontal=(k%2==0)
@@ -109,24 +137,24 @@ class BoardGameArea(QWidget):
         else:
             painter.drawRect(offX+i*grid_size,offY-(j+2)*grid_size, grid_size,2*grid_size)
     def draw_info(self,i,k,string,painter):
-        grid_size=self.grid_size()
-        offX=(self.width()-11*grid_size)//2
-        offY=(self.height()+9*grid_size)//2
+        grid_size=self.grid_size
+        offX=self.game_area_originX
+        offY=self.game_area_originY
         j = k//2
         horizontal = (k%2==0)
         if(horizontal):
             posX=offX + (1+i)*grid_size
-            posY=offY - int((0.5+j)*grid_size)
+            posY=offY - int((0.5+j)*grid_size) - int(1.5*radius)
         else:
             posX=offX + int((0.5+i)*grid_size)
-            posY=offY - (1+j)*grid_size
+            posY=offY - (1+j)*grid_size - int(2.5*radius)
         painter.setPen(textColor)
         painter.drawText(posX, posY, string)
 
     def mousePressEvent(self,event):
-        grid_size=self.grid_size()
-        offX=(self.width()-11*grid_size)//2
-        offY=(self.height()+9*grid_size)//2
+        grid_size=self.grid_size
+        offX=self.game_area_originX
+        offY=self.game_area_originY
         mouse_x = int(event.position().x())
         mouse_y = int(event.position().y())
         dot1 = ((mouse_x-offX) - (mouse_y-offY))//grid_size
@@ -147,6 +175,10 @@ class BoardGameArea(QWidget):
             self.click_move_action(i,k)
     def click_move_action(self,i,k):
         if self.position == None:
+            return
+        if i<0 or i>10:
+            return
+        if k<0 or k>16:
             return
         if self.position.valid_moves[i][k]:
             self.move_click_signal[self.active_player].emit(i,k)
@@ -183,10 +215,12 @@ class InfoArea(QWidget):
 
         self.over = False
 
-        if(args.p0 == None and args.p1 == None):
-            self.add_default_templates()
+        if(args.assistant):
+            self.add_fixed_templates(None, None, args)
+        elif(args.p0 == None and args.p1 == None):
+            self.add_default_templates(args)
         else:
-            self.add_arg_templates(args)
+            self.add_fixed_templates(args.p0, args.p1,args)
 
         self.combo_box[0].currentTextChanged.connect(self.combo0changed)
         self.combo_box[1].currentTextChanged.connect(self.combo1changed)
@@ -199,29 +233,37 @@ class InfoArea(QWidget):
         self.setLayout(layout)
         self.setMinimumWidth(200)
         self.setMaximumWidth(200)
-    def add_default_templates(self):
+    def add_default_templates(self,args):
         self.combo_box[0].addItems(["Player", "AI (random)", "AI (MCTS)"])
         self.combo_box[1].addItems(["Player", "AI (random)", "AI (MCTS)"])
-        templates = [HumanPlayerTemplate(), AIPlayerTemplate(AIRandomTemplate()), AIPlayerTemplate(AIMCTSTemplate())]
+        mcts_steps = args.mcts_steps
+        if mcts_steps == None:
+            mcts_steps=500
+        templates = [HumanPlayerTemplate(), AIPlayerTemplate(AIRandomTemplate()), AIPlayerTemplate(AIMCTSTemplate(mcts_steps=mcts_steps))]
         self.player_templates_options = [templates, templates]
-    def add_arg_templates(self,args):
-        if(args.p0 == None):
+    def add_fixed_templates(self,a0,a1,args):
+        if(a0 == None):
             self.combo_box[0].addItems(["Player"])
             self.player_templates_options[0].append(HumanPlayerTemplate())
         else:
-            template = AIPlayerTemplate(AIMCTSTemplate(path=args.p0,initialize=args.initialize, training=args.train))
-            self.combo_box[0].addItems(["AI {}".format(args.p0)])
+            mcts_steps = args.mcts_steps
+            if mcts_steps == None:
+                mcts_steps=500
+            template = AIPlayerTemplate(AIMCTSTemplate(mcts_steps=mcts_steps,path=a0,initialize=args.initialize, training=args.train))
+            self.combo_box[0].addItems(["AI {}".format(a0)])
             self.player_templates_options[0].append(template)
-        if(args.p1 == None):
+        if(a1 == None):
             self.combo_box[1].addItems(["Player"])
             self.player_templates_options[1].append(HumanPlayerTemplate())
         else:
-            template = AIPlayerTemplate(AIMCTSTemplate(path=args.p1,initialize=args.initialize, training=args.train))
-            self.combo_box[1].addItems(["AI {}".format(args.p1)])
+            mcts_steps = args.mcts_steps
+            if mcts_steps == None:
+                mcts_steps=500
+            template = AIPlayerTemplate(AIMCTSTemplate(mcts_steps=mcts_steps,path=a1,initialize=args.initialize, training=args.train))
+            self.combo_box[1].addItems(["AI {}".format(a1)])
             self.player_templates_options[1].append(template)
         self.combo_box[0].setEnabled(False)
         self.combo_box[1].setEnabled(False)
-
     def combo0changed(self):
         self.combochanged(0)
     def combo1changed(self):
@@ -248,7 +290,8 @@ class InfoArea(QWidget):
         if(winner==None):
             text="Draw!"
         else:
-            text="Player {} wins!".format(winner)
+            color=["dark","light"]
+            text="Player {} ({}) wins!".format(winner,color[winner])
         print(text)
         self.info_label.setText(text)
         self.autorestart()
@@ -292,6 +335,10 @@ class MainWindow(QMainWindow):
         self.game = Game(players[0], players[1])
         self.game.update_signal.connect(self.board_game_area.update_position)
         self.game.end_signal.connect(self.info_area.show_result)
+        if(self.args.assistant):
+            ai_player = AIMCTSTemplate(mcts_steps=None,path=self.assistant,initialize=self.args.initialize, training=self.args.train).new()
+            ai_player.additional_info_signal.connect(self.board_game_area.get_additional_info)
+            #now we need to connect assistant to game
         self.game.update()
     def change_player_template(self,index,template):
         new_player = template.new()
@@ -312,6 +359,8 @@ def main():
     parser.add_argument('--i', type=str, help='Input model path.')
     parser.add_argument('--o', type=str, help='Output model path.')
     parser.add_argument('--overwrite', help='Override output model if existing.', action='store_true')
+    parser.add_argument('--assistant', type=str, help='Manual play but with assisting model.')
+    parser.add_argument('--mcts-steps', type=int, help='Number of steps in MCTS.')
     args = parser.parse_args()
     if(args.learn):
         train(args)

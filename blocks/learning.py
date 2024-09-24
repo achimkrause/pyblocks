@@ -107,10 +107,17 @@ class Training:
             torch.from_numpy(v_as_np).float(),
             torch.from_numpy(p_as_np).float(),
         )
+        [training_dataset, validation_dataset] = torch.utils.data.random_split(dataset, [0.98,0.02])
         # Construct a dataloader to loop over them in batches
-        dataloader = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=42,  # define batch size
+        training_dataloader = torch.utils.data.DataLoader(
+            training_dataset,
+            batch_size=40,  # define batch size
+            shuffle=True,
+            num_workers=2,
+        )
+        validation_dataloader = torch.utils.data.DataLoader(
+            validation_dataset,
+            batch_size=10,  # define batch size
             shuffle=True,
             num_workers=2,
         )
@@ -122,10 +129,11 @@ class Training:
         # Train for a given number of epochs
         for epoch in range(50):
             print("Training epoch {}".format(epoch))
+            losses=[]
             # Make sure your model is in training mode
             self.policy_net.train()
             # Loop over your dataset
-            for x,y,target_v,target_p in dataloader:
+            for x,y,target_v,target_p in training_dataloader:
                 # Reset gradients
                 optimizer.zero_grad()
                 # Forward pass
@@ -136,14 +144,25 @@ class Training:
                         (v - target_v) ** 2 -  # MSE of values
                         (lp * target_p).sum((1, 2))  # CE of policies
                     ).mean()  # mean over the batche
-                print(loss)
+                losses.append(float(loss))
                 loss.backward()
                 # Take a step with the optimizer
                 optimizer.step()
             # Optional: Perform a validation step to check
             # against overfitting
-            #self.policy_net.eval()
-            #do_validation()
+            print(losses)
+            losses=[]
+            print("Validating epoch {}".format(epoch))
+            self.policy_net.eval()
+            for x,y,target_v, target_p in validation_dataloader:
+                optimizer.zero_grad()
+                v,lp = self.policy_net(x,y)
+                loss = (
+                        (v - target_v) ** 2 -  # MSE of values
+                        (lp * target_p).sum((1, 2))  # CE of policies
+                    ).mean()  # mean over the batche
+                losses.append(float(loss))
+            print(losses)
 
         print("Creating {}".format(self.new_path))
 

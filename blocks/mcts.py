@@ -47,17 +47,35 @@ class VPFunction:
 
 #posterior value, posterior policy (temp 1)
 class Experience:
-    def __init__(self, position, prior_value, prior_policy, posterior_policy):
+    def __init__(self, position, posterior_policy):
         self.player0_pieces = position.pieces[0]
         self.player1_pieces = position.pieces[1]
         self.posterior_policy = posterior_policy
     #posterior value gets added later when game is finished
 
 class MCTSTree:
-    def __init__(self, vp_function, position):
+    def __init__(self, vp_function, position, root=False):
         self.position = position
         self.vp_function = vp_function
         self.prior_value, self.prior_policy = self.vp_function.compute(self.position)
+        if(root):
+            count_valid_moves = 0
+            for i in range(11):
+                for k in range(17):
+                    if position.valid_moves[i][k]:
+                        count_valid_moves += 1
+            #add noise to prior_policy
+            noise_arr = 0.25 * np.random.dirichlet(np.full(fill_value=0.2,shape=(count_valid_moves)))
+            count = 0
+            for i in range(11):
+                for k in range(17):
+                    if position.valid_moves[i][k]:
+                        self.prior_policy[i][k] += noise_arr[count]
+                        count += 1
+            self.prior_policy = self.prior_policy / self.prior_policy.sum()
+
+
+
         self.value = self.prior_value
         self.visit_count = 1 #N
         self.children = {}
@@ -110,7 +128,7 @@ class MCTSTree:
         self.value += v
         self.visit_count += 1
         return v
-    def compute_posterior_policy(self,temperature=0.0):
+    def compute_posterior_policy(self,temperature=1.0):
         policy = np.zeros(shape=(11,17))
         max_count = None
         for i in range(11):
@@ -120,6 +138,7 @@ class MCTSTree:
                     policy[i][k]=visit_count
                     if max_count == None or visit_count > max_count:
                         max_count = visit_count
+        #print(policy / policy.sum())
         policy = policy / max_count
         if temperature < 1e-8:
             policy = np.floor(policy)
@@ -132,8 +151,17 @@ class MCTSTree:
         return policy
     def compute_experience(self):
         posterior_policy = self.compute_posterior_policy(1.0)
-        exp = Experience(self.position,self.prior_value, self.prior_policy, posterior_policy)
+        exp = Experience(self.position, posterior_policy)
         return exp
+    def debug(self):
+        for i in range(11):
+            for k in range(17):
+                if not self.position.valid_moves[i][k]:
+                    continue
+                visit_count=0
+                if (i,k) in self.children:
+                    visit_count = self.children[(i,k)].visit_count
+                print(f"({i},{k}): visit_count {visit_count}, policy {self.prior_policy[i][k]}")
 
 
 
