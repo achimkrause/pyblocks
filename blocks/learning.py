@@ -127,9 +127,10 @@ class Training:
         optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=3e-4)
         
         # Train for a given number of epochs
-        for epoch in range(50):
+        for epoch in range(10):
             print("Training epoch {}".format(epoch))
-            losses=[]
+            losses=0.0
+            count=0
             # Make sure your model is in training mode
             self.policy_net.train()
             # Loop over your dataset
@@ -144,14 +145,16 @@ class Training:
                         (v - target_v) ** 2 -  # MSE of values
                         (lp * target_p).sum((1, 2))  # CE of policies
                     ).mean()  # mean over the batche
-                losses.append(float(loss))
+                losses += float(loss)
+                count += 1
                 loss.backward()
                 # Take a step with the optimizer
                 optimizer.step()
             # Optional: Perform a validation step to check
             # against overfitting
-            print(losses)
-            losses=[]
+            print("Average loss: {}".format(losses/count))
+            losses=0.0
+            count=0
             print("Validating epoch {}".format(epoch))
             self.policy_net.eval()
             for x,y,target_v, target_p in validation_dataloader:
@@ -161,8 +164,9 @@ class Training:
                         (v - target_v) ** 2 -  # MSE of values
                         (lp * target_p).sum((1, 2))  # CE of policies
                     ).mean()  # mean over the batche
-                losses.append(float(loss))
-            print(losses)
+                losses += float(loss)
+                count += 1
+            print("Average loss: {}".format(losses/count))
 
         print("Creating {}".format(self.new_path))
 
